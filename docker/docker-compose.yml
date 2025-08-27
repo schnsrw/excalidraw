@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  excalidraw:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        VITE_APP_BACKEND_V2_GET_URL: ${VITE_APP_BACKEND_V2_GET_URL}
+        VITE_APP_BACKEND_V2_POST_URL: ${VITE_APP_BACKEND_V2_POST_URL}
+        VITE_APP_LIBRARY_BACKEND: ${VITE_APP_LIBRARY_BACKEND}
+        VITE_APP_WS_SERVER_URL: ${VITE_APP_WS_SERVER_URL}
+        VITE_APP_FIREBASE_CONFIG: "${VITE_APP_FIREBASE_CONFIG}"
+    env_file:
+      - .env
+    expose:
+      - "80"
+    depends_on:
+      - excalidraw-storage-backend
+      - excalidraw-room
+    restart: unless-stopped
+
+  excalidraw-storage-backend:
+    image: kiliandeca/excalidraw-storage-backend
+    environment:
+      STORAGE_URI: redis://redis:6379
+    restart: unless-stopped
+
+  excalidraw-room:
+    image: excalidraw/excalidraw-room
+    environment:
+      PORT: 80
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "3002:80"
+      - "3000:8080"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - excalidraw
+      - excalidraw-storage-backend
+      - excalidraw-room
+    restart: unless-stopped
