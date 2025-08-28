@@ -1,5 +1,4 @@
 import React from "react";
-import { uploadBytes, ref } from "firebase/storage";
 import { nanoid } from "nanoid";
 
 import { trackEvent } from "@excalidraw/excalidraw/analytics";
@@ -27,7 +26,7 @@ import type {
 
 import { FILE_UPLOAD_MAX_BYTES } from "../app_constants";
 import { encodeFilesForUpload } from "../data/FileManager";
-import { loadFirebaseStorage, saveFilesToFirebase } from "../data/firebase";
+import { saveFilesToRedis } from "../data/redis";
 
 export const exportToExcalidrawPlus = async (
   elements: readonly NonDeletedExcalidrawElement[],
@@ -35,7 +34,6 @@ export const exportToExcalidrawPlus = async (
   files: BinaryFiles,
   name: string,
 ) => {
-  const storage = await loadFirebaseStorage();
 
   const id = `${nanoid(12)}`;
 
@@ -52,12 +50,10 @@ export const exportToExcalidrawPlus = async (
     },
   );
 
-  const storageRef = ref(storage, `/migrations/scenes/${id}`);
-  await uploadBytes(storageRef, blob, {
-    customMetadata: {
-      data: JSON.stringify({ version: 2, name }),
-      created: Date.now().toString(),
-    },
+  const sceneBuffer = new Uint8Array(await blob.arrayBuffer());
+  await saveFilesToRedis({
+    prefix: `/migrations/scenes/${id}`,
+    files: [{ id: "scene", buffer: sceneBuffer }],
   });
 
   const filesMap = new Map<FileId, BinaryFileData>();
@@ -74,7 +70,7 @@ export const exportToExcalidrawPlus = async (
       maxBytes: FILE_UPLOAD_MAX_BYTES,
     });
 
-    await saveFilesToFirebase({
+    await saveFilesToRedis({
       prefix: `/migrations/files/scenes/${id}`,
       files: filesToUpload,
     });
