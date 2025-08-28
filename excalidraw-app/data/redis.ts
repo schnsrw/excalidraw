@@ -7,15 +7,7 @@ import {
 } from "@excalidraw/excalidraw/data/encryption";
 import { restoreElements } from "@excalidraw/excalidraw/data/restore";
 import { getSceneVersion } from "@excalidraw/element";
-import { initializeApp } from "firebase/app";
-import {
-  getFirestore,
-  doc,
-  getDoc,
-  runTransaction,
-  Bytes,
-} from "firebase/firestore";
-import { getStorage, ref, uploadBytes } from "firebase/storage";
+import { createClient } from "redis";
 
 import type { RemoteExcalidrawElement } from "@excalidraw/excalidraw/data/reconcile";
 import type {
@@ -30,64 +22,43 @@ import type {
   DataURL,
 } from "@excalidraw/excalidraw/types";
 
-import { FILE_CACHE_MAX_AGE_SEC } from "../app_constants";
-
 import { getSyncableElements } from ".";
 
 import type { SyncableExcalidrawElement } from ".";
 import type Portal from "../collab/Portal";
 import type { Socket } from "socket.io-client";
 
-// private
 // -----------------------------------------------------------------------------
 
-let FIREBASE_CONFIG: Record<string, any>;
-try {
-  FIREBASE_CONFIG = JSON.parse(import.meta.env.VITE_APP_FIREBASE_CONFIG);
-} catch (error: any) {
-  console.warn(
-    `Error JSON parsing firebase config. Supplied value: ${
-      import.meta.env.VITE_APP_FIREBASE_CONFIG
-    }`,
-  );
-  FIREBASE_CONFIG = {};
-}
+const TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
-let firebaseApp: ReturnType<typeof initializeApp> | null = null;
-let firestore: ReturnType<typeof getFirestore> | null = null;
-let firebaseStorage: ReturnType<typeof getStorage> | null = null;
+let redisClient: ReturnType<typeof createClient> | null = null;
+const memoryStore = new Map<string, { value: Uint8Array | string; expires: number }>();
 
-const _initializeFirebase = () => {
-  if (!firebaseApp) {
-    firebaseApp = initializeApp(FIREBASE_CONFIG);
+const getRedisClient = async () => {
+  const url = import.meta.env.VITE_APP_REDIS_URL;
+  if (!url) {
+    return null;
   }
-  return firebaseApp;
-};
-
-const _getFirestore = () => {
-  if (!firestore) {
-    firestore = getFirestore(_initializeFirebase());
+  if (!redisClient) {
+    redisClient = createClient({ url });
+    redisClient.on("error", (err) => console.error("Redis error", err));
+    try {
+      await redisClient.connect();
+    } catch (err) {
+      console.warn("Redis connection failed, falling back to memory store");
+      redisClient = null;
+    }
   }
-  return firestore;
-};
-
-const _getStorage = () => {
-  if (!firebaseStorage) {
-    firebaseStorage = getStorage(_initializeFirebase());
-  }
-  return firebaseStorage;
+  return redisClient;
 };
 
 // -----------------------------------------------------------------------------
 
-export const loadFirebaseStorage = async () => {
-  return _getStorage();
-};
-
-type FirebaseStoredScene = {
+type RedisStoredScene = {
   sceneVersion: number;
-  iv: Bytes;
-  ciphertext: Bytes;
+  iv: string; // base64
+  ciphertext: string; // base64
 };
 
 const encryptElements = async (
@@ -102,11 +73,13 @@ const encryptElements = async (
 };
 
 const decryptElements = async (
-  data: FirebaseStoredScene,
+  data: RedisStoredScene,
   roomKey: string,
 ): Promise<readonly ExcalidrawElement[]> => {
-  const ciphertext = data.ciphertext.toUint8Array();
-  const iv = data.iv.toUint8Array();
+  const ciphertext = Uint8Array.from(
+    Buffer.from(data.ciphertext, "base64"),
+  );
+  const iv = Uint8Array.from(Buffer.from(data.iv, "base64"));
 
   const decrypted = await decryptData(iv, ciphertext, roomKey);
   const decodedData = new TextDecoder("utf-8").decode(
@@ -115,54 +88,54 @@ const decryptElements = async (
   return JSON.parse(decodedData);
 };
 
-class FirebaseSceneVersionCache {
+class RedisSceneVersionCache {
   private static cache = new WeakMap<Socket, number>();
   static get = (socket: Socket) => {
-    return FirebaseSceneVersionCache.cache.get(socket);
+    return RedisSceneVersionCache.cache.get(socket);
   };
   static set = (
     socket: Socket,
     elements: readonly SyncableExcalidrawElement[],
   ) => {
-    FirebaseSceneVersionCache.cache.set(socket, getSceneVersion(elements));
+    RedisSceneVersionCache.cache.set(socket, getSceneVersion(elements));
   };
 }
 
-export const isSavedToFirebase = (
+export const isSavedToRedis = (
   portal: Portal,
   elements: readonly ExcalidrawElement[],
 ): boolean => {
   if (portal.socket && portal.roomId && portal.roomKey) {
     const sceneVersion = getSceneVersion(elements);
 
-    return FirebaseSceneVersionCache.get(portal.socket) === sceneVersion;
+    return RedisSceneVersionCache.get(portal.socket) === sceneVersion;
   }
-  // if no room exists, consider the room saved so that we don't unnecessarily
-  // prevent unload (there's nothing we could do at that point anyway)
   return true;
 };
 
-export const saveFilesToFirebase = async ({
+export const saveFilesToRedis = async ({
   prefix,
   files,
 }: {
   prefix: string;
   files: { id: FileId; buffer: Uint8Array }[];
 }) => {
-  const storage = await loadFirebaseStorage();
-
   const erroredFiles: FileId[] = [];
   const savedFiles: FileId[] = [];
 
   await Promise.all(
     files.map(async ({ id, buffer }) => {
       try {
-        const storageRef = ref(storage, `${prefix}/${id}`);
-        await uploadBytes(storageRef, buffer, {
-          cacheControl: `public, max-age=${FILE_CACHE_MAX_AGE_SEC}`,
-        });
+        const key = `${prefix}/${id}`;
+        const client = await getRedisClient();
+        if (client) {
+          await client.set(Buffer.from(key), buffer, { EX: TTL_SECONDS });
+        } else {
+          memoryStore.set(key, { value: buffer, expires: Date.now() + TTL_SECONDS * 1000 });
+        }
         savedFiles.push(id);
       } catch (error: any) {
+        console.error(error);
         erroredFiles.push(id);
       }
     }),
@@ -171,50 +144,40 @@ export const saveFilesToFirebase = async ({
   return { savedFiles, erroredFiles };
 };
 
-const createFirebaseSceneDocument = async (
+const createRedisSceneDocument = async (
   elements: readonly SyncableExcalidrawElement[],
   roomKey: string,
-) => {
+): Promise<RedisStoredScene> => {
   const sceneVersion = getSceneVersion(elements);
   const { ciphertext, iv } = await encryptElements(roomKey, elements);
   return {
     sceneVersion,
-    ciphertext: Bytes.fromUint8Array(new Uint8Array(ciphertext)),
-    iv: Bytes.fromUint8Array(iv),
-  } as FirebaseStoredScene;
+    ciphertext: Buffer.from(ciphertext).toString("base64"),
+    iv: Buffer.from(iv).toString("base64"),
+  };
 };
 
-export const saveToFirebase = async (
+export const saveToRedis = async (
   portal: Portal,
   elements: readonly SyncableExcalidrawElement[],
   appState: AppState,
 ) => {
   const { roomId, roomKey, socket } = portal;
-  if (
-    // bail if no room exists as there's nothing we can do at this point
-    !roomId ||
-    !roomKey ||
-    !socket ||
-    isSavedToFirebase(portal, elements)
-  ) {
+  if (!roomId || !roomKey || !socket || isSavedToRedis(portal, elements)) {
     return null;
   }
 
-  const firestore = _getFirestore();
-  const docRef = doc(firestore, "scenes", roomId);
+  const key = `scenes:${roomId}`;
+  const client = await getRedisClient();
+  const prevRaw = client
+    ? await client.get(key)
+    : (memoryStore.get(key)?.value as string | undefined);
+  let storedScene: RedisStoredScene;
 
-  const storedScene = await runTransaction(firestore, async (transaction) => {
-    const snapshot = await transaction.get(docRef);
-
-    if (!snapshot.exists()) {
-      const storedScene = await createFirebaseSceneDocument(elements, roomKey);
-
-      transaction.set(docRef, storedScene);
-
-      return storedScene;
-    }
-
-    const prevStoredScene = snapshot.data() as FirebaseStoredScene;
+  if (!prevRaw) {
+    storedScene = await createRedisSceneDocument(elements, roomKey);
+  } else {
+    const prevStoredScene = JSON.parse(prevRaw) as RedisStoredScene;
     const prevStoredElements = getSyncableElements(
       restoreElements(await decryptElements(prevStoredScene, roomKey), null),
     );
@@ -225,39 +188,52 @@ export const saveToFirebase = async (
         appState,
       ),
     );
-
-    const storedScene = await createFirebaseSceneDocument(
+    storedScene = await createRedisSceneDocument(
       reconciledElements,
       roomKey,
     );
+  }
 
-    transaction.update(docRef, storedScene);
-
-    // Return the stored elements as the in memory `reconciledElements` could have mutated in the meantime
-    return storedScene;
-  });
+  if (client) {
+    await client.set(key, JSON.stringify(storedScene), { EX: TTL_SECONDS });
+  } else {
+    memoryStore.set(key, {
+      value: JSON.stringify(storedScene),
+      expires: Date.now() + TTL_SECONDS * 1000,
+    });
+  }
 
   const storedElements = getSyncableElements(
     restoreElements(await decryptElements(storedScene, roomKey), null),
   );
 
-  FirebaseSceneVersionCache.set(socket, storedElements);
+  RedisSceneVersionCache.set(socket, storedElements);
 
   return storedElements;
 };
 
-export const loadFromFirebase = async (
+export const loadFromRedis = async (
   roomId: string,
   roomKey: string,
   socket: Socket | null,
 ): Promise<readonly SyncableExcalidrawElement[] | null> => {
-  const firestore = _getFirestore();
-  const docRef = doc(firestore, "scenes", roomId);
-  const docSnap = await getDoc(docRef);
-  if (!docSnap.exists()) {
+  const key = `scenes:${roomId}`;
+  const client = await getRedisClient();
+  let raw: string | undefined;
+  if (client) {
+    raw = await client.get(key);
+  } else {
+    const entry = memoryStore.get(key);
+    if (entry && entry.expires > Date.now()) {
+      raw = entry.value as string;
+    } else {
+      memoryStore.delete(key);
+    }
+  }
+  if (!raw) {
     return null;
   }
-  const storedScene = docSnap.data() as FirebaseStoredScene;
+  const storedScene = JSON.parse(raw) as RedisStoredScene;
   const elements = getSyncableElements(
     restoreElements(await decryptElements(storedScene, roomKey), null, {
       deleteInvisibleElements: true,
@@ -265,13 +241,13 @@ export const loadFromFirebase = async (
   );
 
   if (socket) {
-    FirebaseSceneVersionCache.set(socket, elements);
+    RedisSceneVersionCache.set(socket, elements);
   }
 
   return elements;
 };
 
-export const loadFilesFromFirebase = async (
+export const loadFilesFromRedis = async (
   prefix: string,
   decryptionKey: string,
   filesIds: readonly FileId[],
@@ -282,15 +258,22 @@ export const loadFilesFromFirebase = async (
   await Promise.all(
     [...new Set(filesIds)].map(async (id) => {
       try {
-        const url = `https://firebasestorage.googleapis.com/v0/b/${
-          FIREBASE_CONFIG.storageBucket
-        }/o/${encodeURIComponent(prefix.replace(/^\//, ""))}%2F${id}`;
-        const response = await fetch(`${url}?alt=media`);
-        if (response.status < 400) {
-          const arrayBuffer = await response.arrayBuffer();
-
+        const key = `${prefix}/${id}`;
+        const client = await getRedisClient();
+        let buffer: Uint8Array | undefined;
+        if (client) {
+          buffer = await client.getBuffer(Buffer.from(key));
+        } else {
+          const entry = memoryStore.get(key);
+          if (entry && entry.expires > Date.now()) {
+            buffer = entry.value as Uint8Array;
+          } else {
+            memoryStore.delete(key);
+          }
+        }
+        if (buffer) {
           const { data, metadata } = await decompressData<BinaryFileMetadata>(
-            new Uint8Array(arrayBuffer),
+            new Uint8Array(buffer),
             {
               decryptionKey,
             },
@@ -309,11 +292,12 @@ export const loadFilesFromFirebase = async (
           erroredFiles.set(id, true);
         }
       } catch (error: any) {
-        erroredFiles.set(id, true);
         console.error(error);
+        erroredFiles.set(id, true);
       }
     }),
   );
 
   return { loadedFiles, erroredFiles };
 };
+
