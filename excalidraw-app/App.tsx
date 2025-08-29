@@ -87,6 +87,7 @@ import { updateStaleImageStatuses } from "./data/FileManager";
 import {
   importFromLocalStorage,
   importUsernameFromLocalStorage,
+  saveUsernameToLocalStorage,
 } from "./data/localStorage";
 
 import { loadFilesFromFirebase } from "./data/firebase";
@@ -166,6 +167,7 @@ const allowedOriginRegexes = allowedEmbedOrigins.map((pattern: string) => {
   return new RegExp(`^${pattern.replace(/\./g, "\\.")}$`, "i");
 });
 
+
 if (window.self !== window.top) {
   try {
     const parentUrl = new URL(document.referrer);
@@ -184,6 +186,13 @@ if (window.self !== window.top) {
   } catch {
     // ignore
   }
+}
+
+const usernameFromUrl = new URLSearchParams(window.location.search).get(
+  "username",
+);
+if (usernameFromUrl) {
+  saveUsernameToLocalStorage(usernameFromUrl);
 }
 
 const shareableLinkConfirmDialog = {
@@ -334,7 +343,6 @@ const initializeScene = async (opts: {
 const ExcalidrawWrapper = () => {
   const [errorMessage, setErrorMessage] = useState("");
   const isCollabDisabled = isRunningInIframe() && !isEmbedAllowed;
-
 
   const { editorTheme, appTheme, setAppTheme } = useHandleAppTheme();
 
@@ -723,6 +731,7 @@ const ExcalidrawWrapper = () => {
   // browsers generally prevent infinite self-embedding, there are
   // cases where it still happens, and while we disallow self-embedding
   // by not whitelisting our own origin, this serves as an additional guard
+<<<<<<< HEAD
 //  if (isSelfEmbedding) {
 //    return (
 //      <div
@@ -738,6 +747,23 @@ const ExcalidrawWrapper = () => {
  //     </div>
  //   );
  // }
+=======
+  if (isSelfEmbedding) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          height: "100%",
+        }}
+      >
+        <h1>I'm not a pretzel!</h1>
+      </div>
+    );
+  }
+>>>>>>> ecd9834d77884daea33ff83fb3c2dd8fd7f8cb25
 
   return (
     <div
