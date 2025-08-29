@@ -150,7 +150,7 @@ window.addEventListener(
 );
 
 let isSelfEmbedding = false;
-let isEmbedAllowed = false;
+let isEmbedAllowed = true;
 
 const allowedEmbedOrigins =
   import.meta.env.VITE_ALLOWED_EMBED_ORIGINS?.split(",")
