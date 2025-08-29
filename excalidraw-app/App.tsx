@@ -731,7 +731,7 @@ const ExcalidrawWrapper = () => {
   // browsers generally prevent infinite self-embedding, there are
   // cases where it still happens, and while we disallow self-embedding
   // by not whitelisting our own origin, this serves as an additional guard
-<<<<<<< HEAD
+
 //  if (isSelfEmbedding) {
 //    return (
 //      <div
@@ -747,23 +747,7 @@ const ExcalidrawWrapper = () => {
  //     </div>
  //   );
  // }
-=======
-  if (isSelfEmbedding) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-          height: "100%",
-        }}
-      >
-        <h1>I'm not a pretzel!</h1>
-      </div>
-    );
-  }
->>>>>>> ecd9834d77884daea33ff83fb3c2dd8fd7f8cb25
+
 
   return (
     <div
