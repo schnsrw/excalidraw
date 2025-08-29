@@ -16,7 +16,7 @@ export const AppFooter = React.memo(
           }}
         >
           {isVisualDebuggerEnabled() && <DebugFooter onChange={onChange} />}
-          <EncryptedIcon />
+          {/* <EncryptedIcon /> */}
         </div>
       </Footer>
     );

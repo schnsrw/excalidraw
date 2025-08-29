@@ -13,7 +13,7 @@ export const AppWelcomeScreen = React.memo(() => {
       </WelcomeScreen.Hints.MenuHint>
       <WelcomeScreen.Hints.ToolbarHint />
       <WelcomeScreen.Hints.HelpHint />
-      <WelcomeScreen.Center>
+      {/* <WelcomeScreen.Center>
         <WelcomeScreen.Center.Logo />
         <WelcomeScreen.Center.Heading>
           {headingContent}
@@ -22,7 +22,7 @@ export const AppWelcomeScreen = React.memo(() => {
           <WelcomeScreen.Center.MenuItemLoadScene />
           <WelcomeScreen.Center.MenuItemHelp />
         </WelcomeScreen.Center.Menu>
-      </WelcomeScreen.Center>
+      </WelcomeScreen.Center> */}
     </WelcomeScreen>
   );
 });
