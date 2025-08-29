@@ -153,23 +153,35 @@ let isEmbedAllowed = false;
 
 const allowedEmbedOrigins =
   import.meta.env.VITE_ALLOWED_EMBED_ORIGINS?.split(",")
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length) || [];
+    .map((origin: string) => origin.trim())
+    .filter((origin: string | any[]) => origin.length) || [];
+
+// Convert wildcard patterns (*.domain.com) to regex
+const allowedOriginRegexes = allowedEmbedOrigins.map((pattern: string) => {
+  if (pattern.startsWith("*.")) {
+    // turn "*.domain.com" → /^https?:\/\/([a-z0-9-]+\.)*domain\.com$/i
+    const domain = pattern.slice(2).replace(/\./g, "\\.");
+    return new RegExp(`^https?:\\/\\/([a-z0-9-]+\\.)*${domain}$`, "i");
+  }
+  return new RegExp(`^${pattern.replace(/\./g, "\\.")}$`, "i");
+});
 
 if (window.self !== window.top) {
   try {
     const parentUrl = new URL(document.referrer);
     const currentUrl = new URL(window.location.href);
+
     if (parentUrl.href === currentUrl.href) {
       isSelfEmbedding = true;
     }
+
     if (
       parentUrl.origin === currentUrl.origin ||
-      allowedEmbedOrigins.includes(parentUrl.origin)
+      allowedOriginRegexes.some((regex: { test: (arg0: string) => any; }) => regex.test(parentUrl.origin))
     ) {
       isEmbedAllowed = true;
     }
-  } catch (error) {
+  } catch {
     // ignore
   }
 }
