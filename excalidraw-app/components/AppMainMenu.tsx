@@ -23,7 +23,7 @@ export const AppMainMenu: React.FC<{
       <MainMenu.DefaultItems.SaveAsImage />
       <MainMenu.DefaultItems.CommandPalette className="highlighted" />
       <MainMenu.DefaultItems.SearchMenu />
-      <MainMenu.DefaultItems.Help />
+      {/* Help dialog removed */}
       <MainMenu.DefaultItems.ClearCanvas />
       {isDevEnv() && (
         <MainMenu.Item

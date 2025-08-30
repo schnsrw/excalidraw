@@ -8,6 +8,17 @@ interface ImportMetaEnv {
   VITE_APP_BACKEND_V2_GET_URL: string;
   VITE_APP_BACKEND_V2_POST_URL: string;
 
+  // Storage selection: "firebase" (default), "s3", or "redis"
+  VITE_APP_STORAGE_DRIVER?: "firebase" | "s3" | "redis";
+  // When using S3/MinIO driver
+  // Public base URL to read objects from (e.g., https://storage.example.com/bucket)
+  VITE_APP_S3_PUBLIC_URL?: string;
+  // Presign endpoint to obtain PUT URLs for uploads (e.g., /api/storage/presign)
+  VITE_APP_S3_PRESIGN_URL?: string;
+  // When using Redis storage backend
+  // Base URL for the storage API (e.g., "/api")
+  VITE_APP_STORAGE_BASE_URL?: string;
+
   // collaboration WebSocket server (https: string
   VITE_APP_WS_SERVER_URL: string;
 

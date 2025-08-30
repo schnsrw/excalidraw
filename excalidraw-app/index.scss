@@ -82,6 +82,14 @@
   }
 }
 
+/* Hide built-in help button and social links */
+.HelpButton,
+.main-menu a[href^="https://github.com/excalidraw"],
+.main-menu a[href^="https://x.com/excalidraw"],
+.main-menu a[href^="https://discord.gg/"] {
+  display: none !important;
+}
+
 .plus-button {
   display: flex;
   justify-content: center;

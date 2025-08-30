@@ -106,8 +106,7 @@ import DebugCanvas, {
   isVisualDebuggerEnabled,
   loadSavedDebugState,
 } from "./components/DebugCanvas";
-import { AIComponents } from "./components/AI";
-import { ExcalidrawPlusIframeExport } from "./ExcalidrawPlusIframeExport";
+// AI and Excalidraw+ export disabled
 
 import "./index.scss";
 
@@ -794,7 +793,7 @@ const ExcalidrawWrapper = () => {
           <OverwriteConfirmDialog.Actions.SaveToDisk />
         </OverwriteConfirmDialog>
         <AppFooter onChange={() => excalidrawAPI?.refresh()} />
-        {excalidrawAPI && <AIComponents excalidrawAPI={excalidrawAPI} />}
+        {/* AI generate removed */}
 
         <TTDDialogTrigger />
         {latestShareableLink && (
@@ -854,11 +853,7 @@ const ExcalidrawWrapper = () => {
 };
 
 const ExcalidrawApp = () => {
-  const isCloudExportWindow =
-    window.location.pathname === "/excalidraw-plus-export";
-  if (isCloudExportWindow) {
-    return <ExcalidrawPlusIframeExport />;
-  }
+  // Excalidraw+ export route disabled
 
   return (
     <TopErrorBoundary>
