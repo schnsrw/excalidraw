@@ -664,6 +664,8 @@ export type UIOptions = Partial<{
   };
   /** @deprecated does nothing. Will be removed in 0.15 */
   welcomeScreen?: boolean;
+  /** whether to show the library menu */
+  libraryMenu?: boolean;
 }>;
 
 export type AppProps = Merge<
