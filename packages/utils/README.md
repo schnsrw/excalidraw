@@ -26,6 +26,11 @@ Export an Excalidraw diagram to a [Blob](https://developer.mozilla.org/en-US/doc
 
 Export an Excalidraw diagram to a [SVGElement](https://developer.mozilla.org/en-US/docs/Web/API/SVGElement).
 
+
+### `createDocumentTranslationPipeline`
+
+Builds a JS translation pipeline for `.docx`, `.odt`, `.doc`, and `.pdf` files where a WebAssembly runtime handles document I/O and a translation client (for example, Gamma translation APIs) translates extracted text segments before rebuilding the file.
+
 ## Usage
 
 Excalidraw utils is published as a UMD (Universal Module Definition). If you are using a module bundler (for instance, Webpack), you can import it as an ES6 module:
